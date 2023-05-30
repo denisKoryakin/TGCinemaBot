@@ -8,31 +8,17 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.koryakin.cinematelegrambotcore.config.BotConfig;
+import ru.koryakin.cinematelegrambotcore.utils.JsonParser;
 
-@Slf4j /* логгер */
+@Slf4j
 @Service
 public class TelegramBotService extends TelegramLongPollingBot {
 
     @Autowired
     BotConfig config;
+    @Autowired
+    JsonParser parser;
 
-//    private List<Movie> movies = new ArrayList<>();
-//    // TODO: 23.05.2023 перенести в метод
-//
-//    @Autowired
-//    MovieDao movieDao;
-//    @Autowired
-//    JsonParser jsonParser;
-
-//    public void readAllToList() {
-//        jsonParser.jsonToList(jsonParser.getCinemaDb().getPath(), movies);
-//    }
-//
-//    public void saveAllToDb() {
-//        for (Movie movie : movies) {
-//            movieDao.save(movie);
-//        }
-//    }
 
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -43,10 +29,9 @@ public class TelegramBotService extends TelegramLongPollingBot {
                 case "/start":
                     startCommand(chatId, update.getMessage().getChat().getFirstName());
                     break;
-//                case "/init":
-//                    readAllToList();
-//                    saveAllToDb();
-//                    break;
+                case "/init":
+                    parser.updateDb();
+                    break;
                 default:
                     sendMessage(chatId, "Sorry, command was not recognized");
             }
