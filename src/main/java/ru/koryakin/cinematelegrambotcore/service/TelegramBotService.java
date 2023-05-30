@@ -1,5 +1,6 @@
 package ru.koryakin.cinematelegrambotcore.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -8,6 +9,7 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.koryakin.cinematelegrambotcore.config.BotConfig;
 
+@Slf4j /* логгер */
 @Service
 public class TelegramBotService extends TelegramLongPollingBot {
 
@@ -54,6 +56,7 @@ public class TelegramBotService extends TelegramLongPollingBot {
     private void startCommand(long chatId, String name) {
         String answer = "Hi, " + name + ", nice to meet you!";
         sendMessage(chatId, answer);
+        log.info("Ответ пользователю: {}", name);
     }
 
     private void sendMessage(long chatId, String textToSend) {
@@ -63,7 +66,7 @@ public class TelegramBotService extends TelegramLongPollingBot {
         try {
             execute(message);
         } catch (TelegramApiException e) {
-
+            log.error("Ошибка Telegram API: {}", e.getMessage());
         }
     }
 

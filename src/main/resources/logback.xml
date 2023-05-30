@@ -1,0 +1,35 @@
+<configuration>
+
+    <property name="HOME_LOG" value="var/log/cinemaBotCore/app.log"/>
+
+    <appender name="FILE-ROLLING" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${HOME_LOG}</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>var/log/cinemaBotCore/app.log.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- максимальный размер архива -->
+            <maxFileSize>10MB</maxFileSize>
+            <!-- максимальный размер хранилища архивов, при превышении удаляются старые -->
+            <totalSizeCap>500MB</totalSizeCap>
+            <!-- 50 дней хранения -->
+            <maxHistory>50</maxHistory>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d %p %c{1} [%t] %m%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="cinemaBot" level="debug" additivity="false">
+        <appender-ref ref="FILE-ROLLING"/>
+    </logger>
+
+    <root level="error">
+        <appender-ref ref="FILE-ROLLING"/>
+    </root>
+
+    <root level="info">
+        <appender-ref ref="FILE-ROLLING"/>
+    </root>
+
+</configuration>
