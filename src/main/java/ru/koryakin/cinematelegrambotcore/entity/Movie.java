@@ -10,15 +10,12 @@ import java.io.Serializable;
 @Table(name = "movie")
 @Getter
 @Setter
-/** @Entity - класс необходимо хранить в БД, название таблицы - "movie" **/
 public class Movie implements Serializable {
 
     @Id
     @SequenceGenerator(name = "movieIdSeq", sequenceName = "movie_id_seq", allocationSize = 1)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE,  generator = "movieIdSeq")
-//    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "movieIdSeq")
     private int id;
-    /* @Column - мапит поля класса на колонки таблицы */
     @Column
     private String name;
     @Column(name = "original_name")
@@ -37,26 +34,19 @@ public class Movie implements Serializable {
     public Movie() {
     }
 
-    public Movie(String name, String originalName, Integer year, String country, String genre, Double imdbScore, String posterUrl) {
-        this.name = name;
-        this.originalName = originalName;
-        this.year = year;
-        this.country = country;
-        this.genre = genre;
-        this.imdbScore = imdbScore;
-        this.posterUrl = posterUrl;
-    }
-
     @Override
     public String toString() {
-        return "entities.Movie{" +
-                "name='" + name + '\'' +
-                ", originalName='" + originalName + '\'' +
-                ", year=" + year +
-                ", country='" + country + '\'' +
-                ", genres=" + genre +
-                ", imdbScore=" + imdbScore +
-                ", posterUrl='" + posterUrl + '\'' +
-                '}';
+        return  name + "\n\n" +
+                ", год выпуска: " + year +
+                ", страна: " + country + "\n" +
+                ", жанр" + genre + "\n" +
+                ", IMDB: " + imdbScore;
     }
+
+//    public byte[] showMovie() {
+//        byte[] movie;
+//        this.toString()
+//        return movie;
+//    }
+    // TODO: 01.06.2023 подумать как передавать постер в ТГ
 }

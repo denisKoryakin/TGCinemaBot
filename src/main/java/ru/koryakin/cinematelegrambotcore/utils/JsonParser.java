@@ -25,6 +25,7 @@ public class JsonParser {
     MovieDao movieDao;
 
     public void updateDb() {
+        movieDao.deleteAll();
         List<Movie> movies = new ArrayList<>();
         jsonToList(cinemaDb.getPath(), movies);
         for (Movie movie : movies) {

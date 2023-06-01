@@ -4,21 +4,66 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.Chat;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
+import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
+import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.koryakin.cinematelegrambotcore.config.BotConfig;
+import ru.koryakin.cinematelegrambotcore.entity.Movie;
+import ru.koryakin.cinematelegrambotcore.entity.User;
+import ru.koryakin.cinematelegrambotcore.repository.MovieDao;
+import ru.koryakin.cinematelegrambotcore.repository.UserDao;
 import ru.koryakin.cinematelegrambotcore.utils.JsonParser;
+
+import java.io.*;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
 public class TelegramBotService extends TelegramLongPollingBot {
 
+    final BotConfig config;
     @Autowired
-    BotConfig config;
+    JsonParser jsonParser;
     @Autowired
-    JsonParser parser;
+    UserDao userDao;
+    @Autowired
+    MovieDao movieDao;
+    @Autowired
+    TelegramKeyboardBuilder telegramKeyboardBuilder;
 
+    private final static String HELP_TEXT = "Это бот по подбору кино. Управление ботом осуществляется через меню и клавиатуру.";
+
+    public TelegramBotService(BotConfig config) {
+        this.config = config;
+        /* инициализация меню */
+        List<BotCommand> commandList = new ArrayList<>();
+        commandList.add(new BotCommand("/start", "начало работы, и регистрация пользователя"));
+        commandList.add(new BotCommand("/mydata", "получить мои метаданные"));
+        commandList.add(new BotCommand("/deletemydata", "удалить мои метаданные"));
+        commandList.add(new BotCommand("/help", "помощь в работе с ботом"));
+        commandList.add(new BotCommand("/settings", "настройки"));
+        /* трансляция меню */
+        try {
+            this.execute(new SetMyCommands(commandList, new BotCommandScopeDefault(), null));
+        } catch (TelegramApiException e) {
+            log.error("Ошибка Telegram API: {}", e.getMessage());
+        }
+    }
 
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -26,14 +71,36 @@ public class TelegramBotService extends TelegramLongPollingBot {
             long chatId = update.getMessage().getChatId();
 
             switch (messageText) {
-                case "/start":
+                case "/start" -> {
                     startCommand(chatId, update.getMessage().getChat().getFirstName());
-                    break;
-                case "/init":
-                    parser.updateDb();
-                    break;
-                default:
-                    sendMessage(chatId, "Sorry, command was not recognized");
+                    registryNewUser(update.getMessage());
+                }
+                case "/help" -> sendMessage(chatId, HELP_TEXT);
+                case "/mydata" -> showData(update.getMessage());
+                case "/deletemydata" -> deleteUser(update.getMessage());
+                case "/init" -> jsonParser.updateDb();
+                // TODO: 01.06.2023 добить /settings
+                // TODO: 01.06.2023 добавить кейсы с клавиатуры
+                default -> searchMovie(update.getMessage());
+            }
+        } else if (update.hasCallbackQuery()) {
+            String callbackData = update.getCallbackQuery().getData();
+            long messageId = update.getCallbackQuery().getMessage().getMessageId();
+            long chatId = update.getCallbackQuery().getMessage().getChatId();
+
+            switch (callbackData) {
+                case "DELETE_DATA_BUTTON" -> {
+                    Optional<User> userToDelete = userDao.findById((int) chatId);
+                    if (userToDelete.isPresent()) {
+                        userDao.deleteById((int) chatId);
+                    }
+                    String text = "Ваши данные удалены";
+                    executeEditMessageText(text, chatId, messageId);
+                }
+                case "NOT_DELETE_DATA_BUTTON" -> {
+                    String text = "Ваши данные остались в базе данных";
+                    executeEditMessageText(text, chatId, messageId);
+                }
             }
         }
     }
@@ -48,6 +115,120 @@ public class TelegramBotService extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(textToSend);
+        message.setReplyMarkup(telegramKeyboardBuilder.startKeyboard());
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка Telegram API: {}", e.getMessage());
+        }
+    }
+
+    private void sendImage(long chatId, String imgUrl) {
+        SendPhoto photo = new SendPhoto();
+        try {
+            URL url = new URL(imgUrl);
+            InputFile file = new InputFile(String.valueOf(url));
+            photo.setChatId(String.valueOf(chatId));
+            photo.setPhoto(file);
+            try {
+                execute(photo);
+            } catch (TelegramApiException e) {
+                log.error("Ошибка Telegram API: {}", e.getMessage());
+            }
+        } catch (MalformedURLException e) {
+            log.warn("ошибка URL: {}", e.getMessage());
+        }
+    }
+
+    private void registryNewUser(Message message) {
+        if (userDao.findById(Math.toIntExact(message.getChatId())).isEmpty()) {
+            User newUser = new User();
+            Chat chat = message.getChat();
+
+            newUser.setChatId(chat.getId());
+            newUser.setFirstName(chat.getFirstName());
+            newUser.setLastName(chat.getLastName());
+            newUser.setUserName(chat.getUserName());
+            newUser.setRegisteredTime(new Timestamp(System.currentTimeMillis()));
+
+            userDao.save(newUser);
+        }
+    }
+
+    private void showData(Message message) {
+        Chat chat = message.getChat();
+        int chatId = Math.toIntExact(chat.getId());
+        Optional<User> userFind = userDao.findById(chatId);
+        if (userFind.isPresent()) {
+            sendMessage(chatId, userFind.get().toString());
+        } else {
+            sendMessage(chatId, "Вы не зарегистрированы");
+        }
+    }
+
+    private void deleteUser(Message message) {
+        Chat chat = message.getChat();
+        int chatId = Math.toIntExact(chat.getId());
+
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText("Вы действительно хотите удалить свои данные? " +
+                "Удаление данных означает сброс предпочтений, что повлияет на подбор фильмов от бота. " +
+                "После удаления восстановить их будет не возможно!!");
+        InlineKeyboardMarkup markupInLine = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
+        List<InlineKeyboardButton> rowInLine = new ArrayList<>();
+        var deleteButton = new InlineKeyboardButton();
+
+        deleteButton.setText("Да");
+        deleteButton.setCallbackData("DELETE_DATA_BUTTON");
+
+        var notDeleteButton = new InlineKeyboardButton();
+
+        notDeleteButton.setText("Нет");
+        notDeleteButton.setCallbackData("NOT_DELETE_DATA_BUTTON");
+
+        rowInLine.add(deleteButton);
+        rowInLine.add(notDeleteButton);
+
+        rowsInLine.add(rowInLine);
+
+        markupInLine.setKeyboard(rowsInLine);
+        sendMessage.setReplyMarkup(markupInLine);
+
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка Telegram API: {}", e.getMessage());
+        }
+    }
+
+    private void searchMovie(Message message) {
+        Chat chat = message.getChat();
+        int chatId = Math.toIntExact(chat.getId());
+        List<Optional<Movie>> foundMovie = movieDao.findByName(message.getText());
+        if (foundMovie.isEmpty()) {
+            sendMessage(chatId, "По вашему запросу ничего не найдено");
+        } else {
+            for (Optional<Movie> movie :
+                    foundMovie) {
+                if (movie.isPresent()) {
+                    String imgUrl = movie.get().getPosterUrl();
+                    sendMessage(chatId, movie.get().toString());
+                    sendImage(chatId, imgUrl);
+                }
+            }
+        }
+    }
+    // TODO: 01.06.2023 определить Chat и chatId вне методов
+    // TODO: 01.06.2023 возможно сделать многопоточным приложение
+
+    private void executeEditMessageText(String text, long chatId, long messageId){
+        EditMessageText message = new EditMessageText();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.setMessageId((int) messageId);
+
         try {
             execute(message);
         } catch (TelegramApiException e) {
@@ -57,7 +238,7 @@ public class TelegramBotService extends TelegramLongPollingBot {
 
     @Override
     public String getBotUsername() {
-       return config.getBotName();
+        return config.getBotName();
     }
 
     @Override
