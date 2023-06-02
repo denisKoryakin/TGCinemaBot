@@ -14,8 +14,6 @@ import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeDefault;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.koryakin.cinematelegrambotcore.config.BotConfig;
 import ru.koryakin.cinematelegrambotcore.entity.Movie;
@@ -24,7 +22,6 @@ import ru.koryakin.cinematelegrambotcore.repository.MovieDao;
 import ru.koryakin.cinematelegrambotcore.repository.UserDao;
 import ru.koryakin.cinematelegrambotcore.utils.JsonParser;
 
-import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.Timestamp;
@@ -45,8 +42,11 @@ public class TelegramBotService extends TelegramLongPollingBot {
     MovieDao movieDao;
     @Autowired
     TelegramKeyboardBuilder telegramKeyboardBuilder;
+    @Autowired
+    MovieEvaluator evaluator;
 
-    private final static String HELP_TEXT = "Это бот по подбору кино. Управление ботом осуществляется через меню и клавиатуру.";
+    private final static String HELP_TEXT = "Это бот по подбору кино. Управление ботом осуществляется через меню и клавиатуру. " +
+            "Для поиска фильма по названию просто отправьте сообщение с его названием";
 
     public TelegramBotService(BotConfig config) {
         this.config = config;
@@ -56,7 +56,7 @@ public class TelegramBotService extends TelegramLongPollingBot {
         commandList.add(new BotCommand("/mydata", "получить мои метаданные"));
         commandList.add(new BotCommand("/deletemydata", "удалить мои метаданные"));
         commandList.add(new BotCommand("/help", "помощь в работе с ботом"));
-        commandList.add(new BotCommand("/settings", "настройки"));
+//        commandList.add(new BotCommand("/settings", "настройки"));
         /* трансляция меню */
         try {
             this.execute(new SetMyCommands(commandList, new BotCommandScopeDefault(), null));
@@ -75,12 +75,12 @@ public class TelegramBotService extends TelegramLongPollingBot {
                     startCommand(chatId, update.getMessage().getChat().getFirstName());
                     registryNewUser(update.getMessage());
                 }
-                case "/help" -> sendMessage(chatId, HELP_TEXT);
+                case "/help" -> prepareMessage(chatId, HELP_TEXT);
                 case "/mydata" -> showData(update.getMessage());
                 case "/deletemydata" -> deleteUser(update.getMessage());
                 case "/init" -> jsonParser.updateDb();
-                // TODO: 01.06.2023 добить /settings
-                // TODO: 01.06.2023 добавить кейсы с клавиатуры
+//                 TODO: 01.06.2023 добить /settings
+                // TODO: 01.06.2023 добавить кейсы с постоянной клавиатуры
                 default -> searchMovie(update.getMessage());
             }
         } else if (update.hasCallbackQuery()) {
@@ -101,21 +101,38 @@ public class TelegramBotService extends TelegramLongPollingBot {
                     String text = "Ваши данные остались в базе данных";
                     executeEditMessageText(text, chatId, messageId);
                 }
+                default -> {
+                    String[] words = callbackData.split("_");
+                    String movieId = words[words.length - 1];
+                    if (words[0].equals("LIKE")) {
+                        prepareMessage(chatId, evaluator.like(chatId, movieId));
+                    } else if (words[0].equals("DISLIKE")) {
+                        prepareMessage(chatId, evaluator.dislike(chatId, movieId));
+                    } else if (callbackData.contains("ADD_TO_MY_FAVORITES_BUTTON_")) {
+                        prepareMessage(chatId, evaluator.toFavorite(chatId, movieId));
+                    } else if (callbackData.contains("DELETE_AT_MY_FAVORITES_BUTTON_")) {
+                        prepareMessage(chatId, evaluator.deleteAtMyFavorite(chatId, movieId));
+                    }
+                }
             }
         }
     }
 
     private void startCommand(long chatId, String name) {
         String answer = "Hi, " + name + ", nice to meet you!";
-        sendMessage(chatId, answer);
+        prepareMessage(chatId, answer);
         log.info("Ответ пользователю: {}", name);
     }
 
-    private void sendMessage(long chatId, String textToSend) {
+    private void prepareMessage(long chatId, String textToSend) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(textToSend);
         message.setReplyMarkup(telegramKeyboardBuilder.startKeyboard());
+        sendMessage(message);
+    }
+
+    private void sendMessage(SendMessage message) {
         try {
             execute(message);
         } catch (TelegramApiException e) {
@@ -160,9 +177,9 @@ public class TelegramBotService extends TelegramLongPollingBot {
         int chatId = Math.toIntExact(chat.getId());
         Optional<User> userFind = userDao.findById(chatId);
         if (userFind.isPresent()) {
-            sendMessage(chatId, userFind.get().toString());
+            prepareMessage(chatId, userFind.get().toString());
         } else {
-            sendMessage(chatId, "Вы не зарегистрированы");
+            prepareMessage(chatId, "Вы не зарегистрированы");
         }
     }
 
@@ -175,46 +192,26 @@ public class TelegramBotService extends TelegramLongPollingBot {
         sendMessage.setText("Вы действительно хотите удалить свои данные? " +
                 "Удаление данных означает сброс предпочтений, что повлияет на подбор фильмов от бота. " +
                 "После удаления восстановить их будет не возможно!!");
-        InlineKeyboardMarkup markupInLine = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
-        List<InlineKeyboardButton> rowInLine = new ArrayList<>();
-        var deleteButton = new InlineKeyboardButton();
-
-        deleteButton.setText("Да");
-        deleteButton.setCallbackData("DELETE_DATA_BUTTON");
-
-        var notDeleteButton = new InlineKeyboardButton();
-
-        notDeleteButton.setText("Нет");
-        notDeleteButton.setCallbackData("NOT_DELETE_DATA_BUTTON");
-
-        rowInLine.add(deleteButton);
-        rowInLine.add(notDeleteButton);
-
-        rowsInLine.add(rowInLine);
-
-        markupInLine.setKeyboard(rowsInLine);
-        sendMessage.setReplyMarkup(markupInLine);
-
-        try {
-            execute(sendMessage);
-        } catch (TelegramApiException e) {
-            log.error("Ошибка Telegram API: {}", e.getMessage());
-        }
+        sendMessage.setReplyMarkup(telegramKeyboardBuilder.deleteButtons());
+        sendMessage(sendMessage);
     }
 
     private void searchMovie(Message message) {
         Chat chat = message.getChat();
-        int chatId = Math.toIntExact(chat.getId());
+        Long chatId = chat.getId();
         List<Optional<Movie>> foundMovie = movieDao.findByName(message.getText());
         if (foundMovie.isEmpty()) {
-            sendMessage(chatId, "По вашему запросу ничего не найдено");
+            prepareMessage(chatId, "По вашему запросу ничего не найдено");
         } else {
             for (Optional<Movie> movie :
                     foundMovie) {
                 if (movie.isPresent()) {
                     String imgUrl = movie.get().getPosterUrl();
-                    sendMessage(chatId, movie.get().toString());
+                    SendMessage sendMessage = new SendMessage();
+                    sendMessage.setChatId(String.valueOf(chatId));
+                    sendMessage.setText(movie.get().toString());
+                    sendMessage.setReplyMarkup(telegramKeyboardBuilder.buttonWithMovie(movie.get()));
+                    sendMessage(sendMessage);
                     sendImage(chatId, imgUrl);
                 }
             }
@@ -223,7 +220,7 @@ public class TelegramBotService extends TelegramLongPollingBot {
     // TODO: 01.06.2023 определить Chat и chatId вне методов
     // TODO: 01.06.2023 возможно сделать многопоточным приложение
 
-    private void executeEditMessageText(String text, long chatId, long messageId){
+    private void executeEditMessageText(String text, long chatId, long messageId) {
         EditMessageText message = new EditMessageText();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);

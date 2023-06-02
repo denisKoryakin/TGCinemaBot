@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.util.Set;
 
 @Entity
 @Table(name = "movie")
@@ -31,22 +32,24 @@ public class Movie implements Serializable {
     @Column(name = "poster_url")
     private String posterUrl;
 
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "moviesInFavorite")
+    private Set<User> usersAddedToFavorite;
+
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "moviesLiked")
+    private Set<User> usersLiked;
+
+    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "moviesDisliked")
+    private Set<User> usersDisliked;
+
     public Movie() {
     }
 
     @Override
     public String toString() {
-        return  name + "\n\n" +
+        return name + "\n\n" +
                 ", год выпуска: " + year +
                 ", страна: " + country + "\n" +
                 ", жанр" + genre + "\n" +
                 ", IMDB: " + imdbScore;
     }
-
-//    public byte[] showMovie() {
-//        byte[] movie;
-//        this.toString()
-//        return movie;
-//    }
-    // TODO: 01.06.2023 подумать как передавать постер в ТГ
 }
