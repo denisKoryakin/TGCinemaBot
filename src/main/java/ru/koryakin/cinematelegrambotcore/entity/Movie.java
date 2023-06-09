@@ -5,7 +5,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
-import java.util.Set;
 
 @Entity
 @Table(name = "movie")
@@ -31,15 +30,6 @@ public class Movie implements Serializable {
     private Double imdbScore;
     @Column(name = "poster_url")
     private String posterUrl;
-
-    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "moviesInFavorite")
-    private Set<User> usersAddedToFavorite;
-
-    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "moviesLiked")
-    private Set<User> usersLiked;
-
-    @ManyToMany(fetch = FetchType.LAZY, mappedBy = "moviesDisliked")
-    private Set<User> usersDisliked;
 
     public Movie() {
     }

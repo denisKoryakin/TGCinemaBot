@@ -5,10 +5,15 @@ import org.springframework.data.jpa.repository.Query;
 import ru.koryakin.cinematelegrambotcore.entity.Movie;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface MovieDao extends JpaRepository<Movie, Integer> {
 
     @Query(nativeQuery = true, value = "select * from movie where UPPER(name) like '%'||UPPER(:name)||'%'")
-    List<Optional<Movie>> findByName(String name);
+    List<Movie> findByName(String name);
+
+    @Query(nativeQuery = true, value = "select movie.* from movie join favorite on movie.id = favorite.movie_id where user_id = :userId")
+    List<Movie> findFavoritesByUserId(long userId);
+
+    @Query(nativeQuery = true, value = "select movie.* from movie join likes on movie.id = likes.movie_id where user_id = :userId")
+    List<Movie> findLikedByUserId(long userId);
 }

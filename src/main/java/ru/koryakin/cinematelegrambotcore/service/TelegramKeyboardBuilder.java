@@ -13,6 +13,7 @@ import java.util.List;
 @Component
 public class TelegramKeyboardBuilder {
 
+//    стартовая клавиатура
     public ReplyKeyboardMarkup startKeyboard() {
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
         List<KeyboardRow> keyboardRows = new ArrayList<>();
@@ -22,12 +23,17 @@ public class TelegramKeyboardBuilder {
         KeyboardRow row2 = new KeyboardRow();
         row2.add("Топ лайков");
         row2.add("Топ избранного");
+        KeyboardRow row3 = new KeyboardRow();
+        row3.add("Мои лайки");
+        row3.add("Мое избранное");
         keyboardRows.add(row1);
         keyboardRows.add(row2);
+        keyboardRows.add(row3);
         keyboardMarkup.setKeyboard(keyboardRows);
         return keyboardMarkup;
     }
 
+//    клавиатура с удалением метаданных пользователя
     public InlineKeyboardMarkup deleteButtons() {
         InlineKeyboardMarkup markupInLine = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
@@ -50,6 +56,7 @@ public class TelegramKeyboardBuilder {
         return markupInLine;
     }
 
+//    клавиатура под сообщением с фильмом
     public InlineKeyboardMarkup buttonWithMovie(Movie movie) {
         InlineKeyboardMarkup markupInLine = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
@@ -68,13 +75,27 @@ public class TelegramKeyboardBuilder {
         favoritesButton.setText("в Избранное");
         favoritesButton.setCallbackData("ADD_TO_MY_FAVORITES_BUTTON_" + movieId);
 
+        rowInLine.add(likeButton);
+        rowInLine.add(dislikeButton);
+        rowInLine.add(favoritesButton);
+
+        rowsInLine.add(rowInLine);
+
+        markupInLine.setKeyboard(rowsInLine);
+        return markupInLine;
+    }
+
+//    клавиатура под сообщением с фильмом из избранного
+    public InlineKeyboardMarkup buttonWithFavoriteMovie(Movie movie) {
+        InlineKeyboardMarkup markupInLine = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
+        List<InlineKeyboardButton> rowInLine = new ArrayList<>();
+        String movieId = String.valueOf(movie.getId());
+
         var deleteAtMyFavoritesButton = new InlineKeyboardButton();
         deleteAtMyFavoritesButton.setText("убрать из Избранного");
         deleteAtMyFavoritesButton.setCallbackData("DELETE_AT_MY_FAVORITES_BUTTON_" + movieId);
 
-        rowInLine.add(likeButton);
-        rowInLine.add(dislikeButton);
-        rowInLine.add(favoritesButton);
         rowInLine.add(deleteAtMyFavoritesButton);
 
         rowsInLine.add(rowInLine);

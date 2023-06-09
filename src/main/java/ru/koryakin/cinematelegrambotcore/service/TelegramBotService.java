@@ -18,6 +18,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.koryakin.cinematelegrambotcore.config.BotConfig;
 import ru.koryakin.cinematelegrambotcore.entity.Movie;
 import ru.koryakin.cinematelegrambotcore.entity.User;
+import ru.koryakin.cinematelegrambotcore.repository.FavoriteDao;
 import ru.koryakin.cinematelegrambotcore.repository.MovieDao;
 import ru.koryakin.cinematelegrambotcore.repository.UserDao;
 import ru.koryakin.cinematelegrambotcore.utils.JsonParser;
@@ -41,12 +42,16 @@ public class TelegramBotService extends TelegramLongPollingBot {
     @Autowired
     MovieDao movieDao;
     @Autowired
+    FavoriteDao favoriteDao;
+    @Autowired
     TelegramKeyboardBuilder telegramKeyboardBuilder;
     @Autowired
     MovieEvaluator evaluator;
 
     private final static String HELP_TEXT = "Это бот по подбору кино. Управление ботом осуществляется через меню и клавиатуру. " +
-            "Для поиска фильма по названию просто отправьте сообщение с его названием";
+            "Для поиска фильма по названию просто отправьте сообщение с его названием." +
+            "Для начала работы наберите команду /start - произойдет ваша регистрация в системе." +
+            "При регистрации вам становятся доступными следующие функции: добавление фильмов в избранное, возможность оценки фильмов";
 
     public TelegramBotService(BotConfig config) {
         this.config = config;
@@ -79,7 +84,8 @@ public class TelegramBotService extends TelegramLongPollingBot {
                 case "/mydata" -> showData(update.getMessage());
                 case "/deletemydata" -> deleteUser(update.getMessage());
                 case "/init" -> jsonParser.updateDb();
-//                 TODO: 01.06.2023 добить /settings
+                case "Мое избранное" -> showMyFavoriteMovies(chatId);
+                case "Мои лайки" -> showMyLikedMovies(chatId);
                 // TODO: 01.06.2023 добавить кейсы с постоянной клавиатуры
                 default -> searchMovie(update.getMessage());
             }
@@ -105,13 +111,13 @@ public class TelegramBotService extends TelegramLongPollingBot {
                     String[] words = callbackData.split("_");
                     String movieId = words[words.length - 1];
                     if (words[0].equals("LIKE")) {
-                        prepareMessage(chatId, evaluator.like(chatId, movieId));
+                        executeEditMessageText(evaluator.like(chatId, movieId), chatId, messageId);
                     } else if (words[0].equals("DISLIKE")) {
-                        prepareMessage(chatId, evaluator.dislike(chatId, movieId));
+                        executeEditMessageText(evaluator.dislike(chatId, movieId), chatId, messageId);
                     } else if (callbackData.contains("ADD_TO_MY_FAVORITES_BUTTON_")) {
-                        prepareMessage(chatId, evaluator.toFavorite(chatId, movieId));
+                        executeEditMessageText(evaluator.toFavorite(chatId, movieId), chatId, messageId);
                     } else if (callbackData.contains("DELETE_AT_MY_FAVORITES_BUTTON_")) {
-                        prepareMessage(chatId, evaluator.deleteAtMyFavorite(chatId, movieId));
+                        executeEditMessageText(evaluator.deleteAtMyFavorite(chatId, movieId), chatId, messageId);
                     }
                 }
             }
@@ -119,9 +125,9 @@ public class TelegramBotService extends TelegramLongPollingBot {
     }
 
     private void startCommand(long chatId, String name) {
-        String answer = "Hi, " + name + ", nice to meet you!";
+        String answer = "Привет, " + name + ", с этого момента Вы зарегистрированы в нашей системе подбора фильмов!";
         prepareMessage(chatId, answer);
-        log.info("Ответ пользователю: {}", name);
+        log.info("Регистрация пользователя {}", name);
     }
 
     private void prepareMessage(long chatId, String textToSend) {
@@ -196,30 +202,56 @@ public class TelegramBotService extends TelegramLongPollingBot {
         sendMessage(sendMessage);
     }
 
+    private void showMyFavoriteMovies(long chatId) {
+        Optional<User> user = userDao.findById((int) chatId);
+        if (user.isPresent()) {
+            List<Movie> movies;
+            prepareMessage(chatId, "В вашем избранном: ");
+            movies = movieDao.findFavoritesByUserId(chatId);
+            for (Movie movie : movies) {
+                SendMessage sendMessage = new SendMessage();
+                sendMessage.setChatId(String.valueOf(chatId));
+                sendMessage.setText(movie.toString());
+                sendMessage.setReplyMarkup(telegramKeyboardBuilder.buttonWithFavoriteMovie(movie));
+                sendMessage(sendMessage);
+            }
+        }
+    }
+
+    private void showMyLikedMovies(long chatId) {
+        Optional<User> user = userDao.findById((int) chatId);
+        if (user.isPresent()) {
+            List<Movie> movies;
+            prepareMessage(chatId, "Вы лайкнули: ");
+            movies = movieDao.findLikedByUserId(chatId);
+            for (Movie movie : movies) {
+                prepareMessage(chatId, movie.toString());
+            }
+        }
+    }
+
     private void searchMovie(Message message) {
         Chat chat = message.getChat();
         Long chatId = chat.getId();
-        List<Optional<Movie>> foundMovie = movieDao.findByName(message.getText());
+        List<Movie> foundMovie = movieDao.findByName(message.getText());
         if (foundMovie.isEmpty()) {
             prepareMessage(chatId, "По вашему запросу ничего не найдено");
         } else {
-            for (Optional<Movie> movie :
+            for (Movie movie :
                     foundMovie) {
-                if (movie.isPresent()) {
-                    String imgUrl = movie.get().getPosterUrl();
-                    SendMessage sendMessage = new SendMessage();
-                    sendMessage.setChatId(String.valueOf(chatId));
-                    sendMessage.setText(movie.get().toString());
-                    sendMessage.setReplyMarkup(telegramKeyboardBuilder.buttonWithMovie(movie.get()));
-                    sendMessage(sendMessage);
-                    sendImage(chatId, imgUrl);
-                }
+                String imgUrl = movie.getPosterUrl();
+                SendMessage sendMessage = new SendMessage();
+                sendMessage.setChatId(String.valueOf(chatId));
+                sendMessage.setText(movie.toString());
+                sendMessage.setReplyMarkup(telegramKeyboardBuilder.buttonWithMovie(movie));
+                sendMessage(sendMessage);
+                sendImage(chatId, imgUrl);
             }
         }
     }
     // TODO: 01.06.2023 определить Chat и chatId вне методов
-    // TODO: 01.06.2023 возможно сделать многопоточным приложение
 
+    //    метод изменения сообщения с кнопками при нажатии на них
     private void executeEditMessageText(String text, long chatId, long messageId) {
         EditMessageText message = new EditMessageText();
         message.setChatId(String.valueOf(chatId));

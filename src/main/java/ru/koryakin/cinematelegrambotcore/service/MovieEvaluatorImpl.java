@@ -4,9 +4,8 @@ import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import ru.koryakin.cinematelegrambotcore.entity.User;
-import ru.koryakin.cinematelegrambotcore.repository.MovieDao;
-import ru.koryakin.cinematelegrambotcore.repository.UserDao;
+import ru.koryakin.cinematelegrambotcore.entity.*;
+import ru.koryakin.cinematelegrambotcore.repository.*;
 
 import java.util.Optional;
 
@@ -21,6 +20,12 @@ public class MovieEvaluatorImpl implements MovieEvaluator {
     UserDao userDao;
     @Autowired
     MovieDao movieDao;
+    @Autowired
+    FavoriteDao favoriteDao;
+    @Autowired
+    LikeDao likeDao;
+    @Autowired
+    DislikeDao dislikeDao;
 
     // TODO: 02.06.2023 возможно стоит добавить логику исключения лайком дислайка и наоборот
 
@@ -28,9 +33,9 @@ public class MovieEvaluatorImpl implements MovieEvaluator {
     public String like(long chatId, String movieId) {
         Optional<User> user = userDao.findById((int) chatId);
         if (user.isPresent()) {
-            user.get().likeMovie(movieDao.findById(Integer.parseInt(movieId)).get());
+            likeDao.save(new Likes(new LikesId(chatId, Long.parseLong(movieId))));
             log.info("Поставлен лайк от пользователя {} фильму {}", chatId, movieId);
-            return "Вы поставили лайк";
+            return "Фильму " + "'" + movieDao.findById(Integer.parseInt(movieId)).get().getName() + "'" + " поставлен лайк";
         } else {
             return NOT_REGISTRY_ANSWER;
         }
@@ -40,9 +45,9 @@ public class MovieEvaluatorImpl implements MovieEvaluator {
     public String dislike(long chatId, String movieId) {
         Optional<User> user = userDao.findById((int) chatId);
         if (user.isPresent()) {
-            user.get().dislikeMovie(movieDao.findById(Integer.parseInt(movieId)).get());
+            dislikeDao.save(new Dislike(new DislikeId(chatId, Long.parseLong(movieId))));
             log.info("Поставлен дизлайк от пользователя {} фильму {}", chatId, movieId);
-            return "Вы поставили дизлайк";
+            return "Фильму " + "'" + movieDao.findById(Integer.parseInt(movieId)).get().getName() + "'" + " поставлен дизлайк";
         } else {
             return NOT_REGISTRY_ANSWER;
         }
@@ -52,9 +57,9 @@ public class MovieEvaluatorImpl implements MovieEvaluator {
     public String toFavorite(long chatId, String movieId) {
         Optional<User> user = userDao.findById((int) chatId);
         if (user.isPresent()) {
-            user.get().addToFavorite(movieDao.findById(Integer.parseInt(movieId)).get());
-            log.info("Фильм {} добавлен в избранное пользователем {} ", movieId, chatId);
-            return "Фильм добавлен в избранное";
+            favoriteDao.save(new Favorite(new FavoriteId(chatId, Long.parseLong(movieId))));
+            log.info("Фильм {} добавлен в избранное пользователем {}",movieId, chatId);
+            return "Фильм " + "'" + movieDao.findById(Integer.parseInt(movieId)).get().getName() + "'" + " добавлен в избранное";
         } else {
             return NOT_REGISTRY_ANSWER;
         }
@@ -64,13 +69,9 @@ public class MovieEvaluatorImpl implements MovieEvaluator {
     public String deleteAtMyFavorite(long chatId, String movieId) {
         Optional<User> user = userDao.findById((int) chatId);
         if (user.isPresent()) {
-            if (user.get().getMoviesInFavorite().contains(movieDao.findById(Integer.parseInt(movieId)).get())) {
-                user.get().removeAtFavorite(movieDao.findById(Integer.parseInt(movieId)).get());
+                favoriteDao.delete(new Favorite(new FavoriteId(chatId, Long.parseLong(movieId))));
                 log.info("Фильм {} удален из избранного пользователя {} ", movieId, chatId);
-                return "Фильм удален из избранного";
-            } else {
-                return "Фильм не находится в вашем изьранном";
-            }
+                return "Фильм " + "'" + movieDao.findById(Integer.parseInt(movieId)).get().getName() + "'" + " удален из избранного";
         } else {
             return NOT_REGISTRY_ANSWER;
         }
